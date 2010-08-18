@@ -12,37 +12,57 @@
 #include <X11/XKBlib.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 int main (int argc, char *argv[]) {
     Display *dpy;
-    int group;
+    XkbStateRec xkbState;
+    int group, newgroup;
+    char *endptr;
 
-    if (argc > 2) {
-	fprintf(stderr, "Usage: %s [group]\n", argv[0]);
-	return -1;
+    if (argc > 2 || argc == 2 && (0 == strcmp(argv[1], "--help") ||
+                                  0 == strcmp(argv[1], "-h"))) {
+        fprintf(stderr, "Usage: %s [group]\n", argv[0]);
+        exit(EXIT_FAILURE);
     }
 
     dpy = XkbOpenDisplay(NULL, NULL, NULL, NULL, NULL, NULL);
     if (NULL == dpy) {
         fprintf (stderr, "%s: Can't open display\n", argv[0]);
-	return -1;
+        exit(EXIT_FAILURE);
     }
 
-    if (1 == argc) {
-	XkbStateRec xkbState;
-	XkbGetState(dpy, XkbUseCoreKbd, &xkbState);
-	group = xkbState.group;
-	fprintf (stdout, "%d\n", group);
-    } else { /* 2 == argc */
-	group = atoi(argv[1]);
-	if (False == XkbLockGroup(dpy, XkbUseCoreKbd, abs (group % 4))) {
-	    fprintf(stderr, "%s: Can't lock group\n", argv[0]);
-	    XCloseDisplay(dpy);
-	    return -2;
-	}
-	XSync(dpy, False);
+    XkbGetState(dpy, XkbUseCoreKbd, &xkbState);
+    group = xkbState.group;
+
+    switch (argc) {
+        case 1:
+            fprintf (stdout, "%d\n", group);
+            goto success;
+            break;
+        case 2:
+            errno = 0;
+            newgroup = strtol(argv[1], &endptr, 10);
+            if (errno != 0 || *endptr != '\0') {
+                fprintf(stderr, "The first argument must be an integer\n");
+                goto failure;
+            }
+            if (newgroup != group) {
+                if (False == XkbLockGroup(dpy, XkbUseCoreKbd, abs (newgroup % 4))) {
+                    fprintf(stderr, "%s: Can't lock group\n", argv[0]);
+                    goto failure;
+                }
+                XSync(dpy, False);
+            }
+            break;
     }
 
+success:
     XCloseDisplay(dpy);
-    return 0;
+    exit(EXIT_SUCCESS);
+
+failure:
+    XCloseDisplay(dpy);
+    exit(EXIT_FAILURE);
 }
